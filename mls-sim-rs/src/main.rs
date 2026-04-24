@@ -13,6 +13,20 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 fn main() {
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        unsafe {
+            let handle = std::io::stdout().as_raw_handle();
+            let mut mode: u32 = 0;
+            windows_sys::Win32::System::Console::GetConsoleMode(handle, &mut mode);
+            windows_sys::Win32::System::Console::SetConsoleMode(
+                handle,
+                mode | windows_sys::Win32::System::Console::ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+            );
+        }
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -74,7 +88,7 @@ fn main() {
     };
 
     let _ = eframe::run_native(
-        &format!("MLS 云脚本模拟器 v{}", env!("CARGO_PKG_VERSION")),
+        &format!("MLS 云脚本环境模拟 v{}", env!("CARGO_PKG_VERSION")),
         native_options,
         Box::new(move |cc| Ok(Box::new(gui::GuiApp::new(cc, manager, config, config_path)))),
     );

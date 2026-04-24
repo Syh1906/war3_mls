@@ -1,4 +1,5 @@
 mod console;
+mod events;
 mod rooms;
 mod settings;
 mod state_view;
@@ -16,6 +17,7 @@ use crate::room::{LogEntry, OutEvent, RoomManager};
 pub enum Tab {
     Rooms,
     Console,
+    Events,
     State,
     Settings,
 }
@@ -56,6 +58,9 @@ pub struct GuiApp {
     pub settings_host: String,
     pub settings_port: String,
     pub settings_archive_dir: String,
+
+    // Status
+    pub save_msg: Option<(String, bool, f64)>,
 }
 
 impl GuiApp {
@@ -66,10 +71,15 @@ impl GuiApp {
         config_path: String,
     ) -> Self {
         setup_fonts(&cc.egui_ctx);
+        setup_style(&cc.egui_ctx);
 
         let (host, port, archive_dir) = {
             let cfg = config.read().unwrap();
-            (cfg.host.clone(), cfg.port.to_string(), cfg.archive_dir.clone())
+            (
+                cfg.host.clone(),
+                cfg.port.to_string(),
+                cfg.archive_dir.clone(),
+            )
         };
 
         Self {
@@ -100,6 +110,7 @@ impl GuiApp {
             settings_host: host,
             settings_port: port,
             settings_archive_dir: archive_dir,
+            save_msg: None,
         }
     }
 
@@ -170,21 +181,60 @@ impl GuiApp {
 
 impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // DPI: sync to native pixels_per_point for crisp rendering
+        if let Some(native_ppp) = ctx.native_pixels_per_point() {
+            if (ctx.pixels_per_point() - native_ppp).abs() > 0.01 {
+                ctx.set_pixels_per_point(native_ppp);
+            }
+        }
+
+
         self.sync_subscriptions();
         self.drain_channels();
 
-        egui::TopBottomPanel::top("tab_bar").show(ctx, |ui: &mut egui::Ui| {
-            ui.horizontal(|ui: &mut egui::Ui| {
-                ui.selectable_value(&mut self.active_tab, Tab::Rooms, "  房间  ");
-                ui.selectable_value(&mut self.active_tab, Tab::Console, "  控制台  ");
-                ui.selectable_value(&mut self.active_tab, Tab::State, "  状态  ");
-                ui.selectable_value(&mut self.active_tab, Tab::Settings, "  设置  ");
+        let room_count = self.subscribed_rooms.len();
+
+        egui::TopBottomPanel::top("tab_bar")
+            .frame(
+                egui::Frame::none()
+                    .inner_margin(egui::Margin::symmetric(8.0, 6.0))
+                    .fill(ctx.style().visuals.window_fill()),
+            )
+            .show(ctx, |ui: &mut egui::Ui| {
+                ui.horizontal(|ui: &mut egui::Ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    for (tab, label) in [
+                        (Tab::Rooms, "房间"),
+                        (Tab::Console, "控制台"),
+                        (Tab::Events, "出站事件"),
+                        (Tab::State, "状态"),
+                        (Tab::Settings, "设置"),
+                    ] {
+                        let selected = self.active_tab == tab;
+                        let text = egui::RichText::new(label).size(15.0);
+                        let text = if selected { text.strong() } else { text };
+                        if ui
+                            .selectable_label(selected, text)
+                            .clicked()
+                        {
+                            self.active_tab = tab;
+                        }
+                    }
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui: &mut egui::Ui| {
+                        ui.label(
+                            egui::RichText::new(format!("房间: {}  |  日志: {}", room_count, self.logs.len()))
+                                .small()
+                                .color(egui::Color32::from_rgb(140, 148, 165)),
+                        );
+                    });
+                });
             });
-        });
 
         match self.active_tab {
             Tab::Rooms => self.rooms_tab(ctx),
             Tab::Console => self.console_tab(ctx),
+            Tab::Events => self.events_tab(ctx),
             Tab::State => self.state_tab(ctx),
             Tab::Settings => self.settings_tab(ctx),
         }
@@ -218,6 +268,79 @@ fn setup_fonts(ctx: &egui::Context) {
     }
 
     ctx.set_fonts(fonts);
+}
+
+fn setup_style(ctx: &egui::Context) {
+    let mut style = (*ctx.style()).clone();
+
+    style.text_styles = [
+        (egui::TextStyle::Small, egui::FontId::new(13.0, egui::FontFamily::Proportional)),
+        (egui::TextStyle::Body, egui::FontId::new(15.0, egui::FontFamily::Proportional)),
+        (egui::TextStyle::Button, egui::FontId::new(15.0, egui::FontFamily::Proportional)),
+        (egui::TextStyle::Heading, egui::FontId::new(20.0, egui::FontFamily::Proportional)),
+        (egui::TextStyle::Monospace, egui::FontId::new(14.0, egui::FontFamily::Monospace)),
+    ]
+    .into();
+
+    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+    style.spacing.window_margin = egui::Margin::same(10.0);
+    style.spacing.button_padding = egui::vec2(10.0, 5.0);
+
+    let v = &mut style.visuals;
+    v.window_fill = egui::Color32::from_rgb(22, 22, 28);
+    v.panel_fill = egui::Color32::from_rgb(28, 28, 35);
+    v.faint_bg_color = egui::Color32::from_rgb(38, 40, 50);
+    v.extreme_bg_color = egui::Color32::from_rgb(14, 14, 18);
+    v.code_bg_color = egui::Color32::from_rgb(38, 40, 50);
+
+    v.error_fg_color = egui::Color32::from_rgb(255, 100, 100);
+    v.warn_fg_color = egui::Color32::from_rgb(255, 200, 80);
+    v.hyperlink_color = egui::Color32::from_rgb(100, 170, 255);
+
+    v.selection.bg_fill = egui::Color32::from_rgb(45, 75, 135);
+    v.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(120, 165, 255));
+
+    v.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(35, 36, 44);
+    v.widgets.noninteractive.weak_bg_fill = egui::Color32::from_rgb(32, 33, 40);
+    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(62, 64, 80));
+    v.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(200, 205, 220));
+    v.widgets.noninteractive.rounding = egui::Rounding::same(4.0);
+
+    v.widgets.inactive.bg_fill = egui::Color32::from_rgb(45, 46, 58);
+    v.widgets.inactive.weak_bg_fill = egui::Color32::from_rgb(40, 41, 52);
+    v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(70, 72, 90));
+    v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(215, 218, 228));
+    v.widgets.inactive.rounding = egui::Rounding::same(4.0);
+
+    v.widgets.hovered.bg_fill = egui::Color32::from_rgb(58, 60, 76);
+    v.widgets.hovered.weak_bg_fill = egui::Color32::from_rgb(52, 54, 68);
+    v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 120, 190));
+    v.widgets.hovered.fg_stroke = egui::Stroke::new(1.5, egui::Color32::from_rgb(240, 242, 250));
+    v.widgets.hovered.rounding = egui::Rounding::same(4.0);
+
+    v.widgets.active.bg_fill = egui::Color32::from_rgb(65, 75, 110);
+    v.widgets.active.weak_bg_fill = egui::Color32::from_rgb(58, 66, 96);
+    v.widgets.active.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(120, 145, 220));
+    v.widgets.active.fg_stroke = egui::Stroke::new(2.0, egui::Color32::WHITE);
+    v.widgets.active.rounding = egui::Rounding::same(4.0);
+
+    v.widgets.open.bg_fill = egui::Color32::from_rgb(48, 50, 64);
+    v.widgets.open.weak_bg_fill = egui::Color32::from_rgb(44, 46, 58);
+    v.widgets.open.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(82, 85, 105));
+    v.widgets.open.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(222, 225, 240));
+    v.widgets.open.rounding = egui::Rounding::same(4.0);
+
+    v.window_rounding = egui::Rounding::same(6.0);
+    v.window_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(55, 58, 72));
+    v.striped = true;
+
+    ctx.set_style(style);
+}
+
+pub fn section_heading(ui: &mut egui::Ui, text: &str) {
+    ui.add_space(2.0);
+    ui.label(egui::RichText::new(text).strong().size(16.0));
+    ui.add_space(2.0);
 }
 
 pub fn format_time(ts: f64) -> String {
