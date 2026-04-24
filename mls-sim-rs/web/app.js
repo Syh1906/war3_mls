@@ -111,8 +111,8 @@ async function selectRoom(roomId) {
     document.getElementById('event-panel').innerHTML = '';
     joinRoom(roomId);
 
-    document.getElementById('no-room-selected').style.display = 'none';
-    document.getElementById('room-detail').style.display = 'block';
+    document.getElementById('no-room-selected').classList.add('hidden');
+    document.getElementById('room-detail').classList.remove('hidden');
 
     await refreshRoomDetail();
     refreshRoomList();
@@ -148,7 +148,7 @@ function renderPlayers(players) {
         card.innerHTML = `
             <div class="player-name">[${p.index}] ${p.name}</div>
             <div class="${statusClass}">${statusText}</div>
-            <div style="color:#666;font-size:11px;margin-top:2px">
+            <div class="player-meta">
                 等级 ${p.map_level} | 道具 ${Object.keys(p.items).length} 种
             </div>
             <div class="player-actions">
@@ -211,19 +211,19 @@ async function destroyRoom() {
     if (!confirm('确定要销毁这个房间吗？')) return;
     await api('DELETE', `/api/rooms/${currentRoomId}`);
     currentRoomId = null;
-    document.getElementById('room-detail').style.display = 'none';
-    document.getElementById('no-room-selected').style.display = 'flex';
+    document.getElementById('room-detail').classList.add('hidden');
+    document.getElementById('no-room-selected').classList.remove('hidden');
     refreshRoomList();
 }
 
 // ---- 创建房间 ----
 
 function showCreateRoom() {
-    document.getElementById('create-modal').style.display = 'flex';
+    document.getElementById('create-modal').classList.remove('hidden');
 }
 
 function hideCreateRoom() {
-    document.getElementById('create-modal').style.display = 'none';
+    document.getElementById('create-modal').classList.add('hidden');
 }
 
 async function createRoom() {
@@ -346,7 +346,7 @@ function applyFilter(div, level, search) {
     let show = true;
     if (level !== 'all' && div.dataset.level !== level) show = false;
     if (search && div.dataset.text && !div.dataset.text.includes(search)) show = false;
-    div.style.display = show ? '' : 'none';
+    div.classList.toggle('hidden', !show);
 }
 
 function clearLogs() {
@@ -361,8 +361,8 @@ function clearLogs() {
 function switchTab(btn, panelId) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
-    document.getElementById('log-panel').style.display = panelId === 'log-panel' ? '' : 'none';
-    document.getElementById('event-panel').style.display = panelId === 'event-panel' ? '' : 'none';
+    document.getElementById('log-panel').classList.toggle('hidden', panelId !== 'log-panel');
+    document.getElementById('event-panel').classList.toggle('hidden', panelId !== 'event-panel');
 }
 
 // ---- 初始化 ----

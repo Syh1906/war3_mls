@@ -272,6 +272,9 @@ header .ws-status.disconnected { background: #3a1a1a; color: #f87171; }
 .modal h2 { margin-bottom: 16px; font-size: 16px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
+.hidden { display: none !important; }
+.player-meta { color: #666; font-size: 11px; margin-top: 2px; }
+
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 3px; }

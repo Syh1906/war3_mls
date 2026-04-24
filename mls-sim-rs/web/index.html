@@ -27,7 +27,7 @@
                 <p>选择或创建一个房间开始测试</p>
             </div>
 
-            <div id="room-detail" style="display:none">
+            <div id="room-detail" class="hidden">
                 <div class="room-header">
                     <div>
                         <h2 id="room-title"></h2>
@@ -96,13 +96,13 @@
                         <button class="btn btn-small" onclick="clearLogs()">清空</button>
                     </div>
                     <div id="log-panel" class="log-viewer"></div>
-                    <div id="event-panel" class="log-viewer" style="display:none"></div>
+                    <div id="event-panel" class="log-viewer hidden"></div>
                 </div>
             </div>
         </main>
     </div>
 
-    <div class="modal-overlay" id="create-modal" style="display:none">
+    <div class="modal-overlay hidden" id="create-modal">
         <div class="modal">
             <h2>创建房间</h2>
             <div class="form-group">
