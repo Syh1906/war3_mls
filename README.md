@@ -152,7 +152,7 @@ while True:
 
 ## 支持的 Lua API
 
-完整复刻平台 MLS 运行时 API，详见 `docs/mls-api.md`：
+完整复刻平台 MLS 运行时 API，详见 [Lua 接口参考](docs/api/Lua接口参考.md)：
 
 - `Log.Debug/Info/Error` — 日志
 - `Timer.After/NewTicker` — 定时器
@@ -170,13 +170,15 @@ while True:
 
 ## 详细文档
 
-见 `docs/` 目录：
+见 [docs 文档中心](docs/README.md)：
 
-- [程序使用说明](docs/程序使用说明.md) — exe 完整使用手册
-- [快速开始](docs/快速开始.md)
-- [模拟器架构](docs/模拟器架构.md)
-- [接口参考](docs/接口参考.md)
-- [客户端对接](docs/客户端对接.md)
-- [Lua 接口参考](docs/Lua接口参考.md)
-- [常见问题](docs/常见问题.md)
-- [与线上环境的差异](docs/与线上环境的差异.md)
+- [项目总览](docs/项目总览.md)
+- [用户指南](docs/user-guide/README.md)
+- [快速开始](docs/user-guide/快速开始.md)
+- [程序使用说明](docs/user-guide/程序使用说明.md)
+- [模拟器架构](docs/architecture/模拟器架构.md)
+- [HTTP 接口参考](docs/api/HTTP接口参考.md)
+- [Lua 接口参考](docs/api/Lua接口参考.md)
+- [客户端对接](docs/client/客户端对接.md)
+- [常见问题](docs/user-guide/常见问题.md)
+- [与线上环境的差异](docs/architecture/与线上环境的差异.md)

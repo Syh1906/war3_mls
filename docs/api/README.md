@@ -1,0 +1,20 @@
+# 接口文档
+
+> Parent: [../README.md](../README.md)
+
+本目录记录模拟器对外暴露的 HTTP 接口、Bridge 通道和注入到 Lua VM 的 API。
+
+## 给 LLM 的快速索引
+
+| 任务 | 入口 |
+| --- | --- |
+| 查询 HTTP 端点 | [HTTP 接口参考](HTTP接口参考.md) |
+| 查询 Lua 全局 API | [Lua 接口参考](Lua接口参考.md) |
+| 编写客户端对接 | [客户端对接](../client/客户端对接.md) |
+
+## 给人类的导航
+
+| 文件 | 作用 |
+| --- | --- |
+| `HTTP接口参考.md` | 健康检查、房间、玩家、Bridge、存档、设置和 WebSocket 接口 |
+| `Lua接口参考.md` | 日志、定时器、事件、玩家、房间、道具、存档、控制和 JSON API |

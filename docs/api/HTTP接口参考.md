@@ -1,5 +1,7 @@
 # HTTP 接口参考
 
+> Parent: [README.md](README.md)
+
 默认地址：`http://127.0.0.1:5000`
 
 ## 健康检查
@@ -166,4 +168,4 @@
 
 ### `GET /ws` — WebSocket 连接
 
-详见 [模拟器架构](模拟器架构.md) 中的 WebSocket 章节。
+详见 [模拟器架构](../architecture/模拟器架构.md) 中的 WebSocket 章节。
