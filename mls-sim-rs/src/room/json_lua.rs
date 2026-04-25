@@ -3,6 +3,9 @@ json = {}
 local function esc(s)
   s = tostring(s)
   s = s:gsub('\\', '\\\\'):gsub('"', '\\"'):gsub('\n', '\\n'):gsub('\r', '\\r'):gsub('\t', '\\t')
+  s = s:gsub('[%z\1-\8\11\12\14-\31\127]', function(c)
+    return string.format('\\u%04x', string.byte(c))
+  end)
   return '"' .. s .. '"'
 end
 local function is_array(t)

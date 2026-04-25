@@ -1278,7 +1278,21 @@ fn room_thread(
 
 fn lua_value_to_string(v: &LuaValue) -> String {
     match v {
-        LuaValue::String(s) => s.to_string_lossy().to_string(),
+        LuaValue::String(s) => match s.to_str() {
+            Ok(valid) => valid.to_string(),
+            Err(_) => {
+                let bytes = s.as_bytes();
+                let mut out = String::with_capacity(bytes.len());
+                for b in bytes.iter() {
+                    if b.is_ascii_graphic() || *b == b' ' {
+                        out.push(*b as char);
+                    } else {
+                        out.push_str(&format!("\\x{:02x}", b));
+                    }
+                }
+                out
+            }
+        },
         LuaValue::Integer(i) => i.to_string(),
         LuaValue::Number(n) => n.to_string(),
         LuaValue::Boolean(b) => b.to_string(),
