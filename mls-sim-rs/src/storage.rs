@@ -55,6 +55,7 @@ pub fn save_room_archives(
     Ok(path)
 }
 
+#[allow(dead_code)]
 pub fn load_player_archives(base: &str, script_name: &str) -> Value {
     let path = archive_dir(base).join(format!("{}.json", script_name));
     if !path.exists() {
@@ -135,7 +136,7 @@ pub fn apply_saved_archives(
                 }
             }
             if let Some(v) = saved.get("played_count").and_then(|v| v.as_i64()) {
-                if player.played_count == 1 {
+                if player.played_count == 0 {
                     player.played_count = v as i32;
                 }
             }
@@ -143,6 +144,7 @@ pub fn apply_saved_archives(
     }
 }
 
+#[allow(dead_code)]
 pub fn list_archives(base: &str) -> Vec<Value> {
     let dir = archive_dir(base);
     let mut result = Vec::new();

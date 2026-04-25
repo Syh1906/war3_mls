@@ -1,6 +1,6 @@
 # MLS 云脚本本地模拟器
 
-魔兽争霸 III 云脚本（MLS）本地测试工具，Rust 编写，单文件运行，自带 Web 控制面板。
+魔兽争霸 III 云脚本（MLS）本地测试工具，Rust 编写，单文件运行，自带原生 GUI，并保留 Bridge HTTP 接口供客户端对接。
 
 用于在本地模拟平台云脚本运行环境，支持多客户端连接、事件收发、存档读写，无需连接线上平台。
 
@@ -9,7 +9,6 @@
 ```
 mls-sim-rs/          Rust 模拟器源码
   src/               核心代码
-  web/               Web 前端（编译时嵌入二进制）
   config.example.json 配置示例
 docs/                使用文档
 参考/mls-master/     平台官方 API 文档和 demo 脚本
@@ -36,7 +35,7 @@ cargo build --release
 mls-sim.exe --script-dir "D:/你的脚本目录/script"
 ```
 
-启动后自动创建房间、加载 `main.lua`、打开浏览器。
+启动后自动创建房间、加载 `main.lua`、打开原生 GUI。
 
 **方式二：使用配置文件**
 
@@ -47,13 +46,13 @@ copy config.example.json config.json
 mls-sim.exe
 ```
 
-**方式三：纯 Web 面板操作**
+**方式三：空启动后在 GUI 里建房**
 
 ```powershell
 mls-sim.exe
 ```
 
-打开 `http://127.0.0.1:5000`，点击"+ 新建"手动创建房间。
+在原生 GUI 的“房间”页点击“新建”手动创建房间。
 
 ### 3. 验证
 
@@ -69,6 +68,7 @@ curl http://127.0.0.1:5000/api/health
 | `--port` / `-p` | `5000` | 监听端口 |
 | `--script-dir` / `-s` | 无 | 云脚本目录，启动后自动建房 |
 | `--config` | `config.json` | 配置文件路径 |
+| `--console-notwrte` | `false` | Windows 下隐藏控制台窗口，仅保留 GUI 窗口 |
 
 ## 配置文件
 
@@ -93,16 +93,16 @@ curl http://127.0.0.1:5000/api/health
 | --- | --- |
 | `host` | 监听地址 |
 | `port` | 监听端口 |
-| `auto_open_browser` | 启动后自动打开浏览器 |
+| `auto_open_browser` | 历史字段，当前原生 GUI 版本不再依赖浏览器启动 |
 | `archive_dir` | 存档保存目录 |
 | `auto_room` | 启动后自动创建的房间配置（可不填） |
 | `auto_room.script_dir` | 云脚本目录，目录下必须有 `main.lua` |
 | `auto_room.mode_id` | 游戏模式 ID |
 | `auto_room.players` | 玩家列表，含槽位、昵称、道具、存档等 |
 
-## Web 控制面板
+## 原生 GUI
 
-启动后访问 `http://127.0.0.1:5000`，功能包括：
+启动后打开 `MLS 云脚本环境模拟` 窗口，功能包括：
 
 - 创建/停止/销毁房间
 - 查看玩家状态（在线/离线、等级、道具）

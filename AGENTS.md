@@ -9,10 +9,9 @@
 
 ## 架构
 - 应用入口：`mls-sim-rs/src/main.rs`。
-- HTTP 路由和静态 Web 回退在 `mls-sim-rs/src/server.rs`。
-- API 处理函数在 `mls-sim-rs/src/api/`。
+- 原生 GUI 在 `mls-sim-rs/src/gui/`。
+- Bridge HTTP 接口在 `mls-sim-rs/src/bridge.rs`，用于客户端登录、发送事件、轮询事件和健康检查。
 - 房间和 Lua 运行时逻辑在 `mls-sim-rs/src/room/`。
-- `mls-sim-rs/web/` 通过 `rust-embed` 嵌入二进制；修改内置 Web UI 时编辑这些文件。
 - `参考/mls-master/` 是平台参考资料，不是模拟器源码。
 
 ## 提交署名

@@ -4,7 +4,7 @@
   "auto_open_browser": true,
   "archive_dir": "./archives",
   "auto_room": {
-    "script_dir": "D:/code2/mls/参考/mls-master/demo/apidemo/script",
+    "script_dir": "D:/Code/MlScriptFolder/script_compile",
     "mode_id": 0,
     "players": [
       {
