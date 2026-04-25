@@ -1,6 +1,5 @@
 # HTTP 接口参考
 
-> Parent: [README.md](README.md)
 
 默认地址：`http://127.0.0.1:5000`
 

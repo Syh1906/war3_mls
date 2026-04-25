@@ -1,23 +1,19 @@
-# docs 导航 README 模板
+# docs导航README模板
 
-> Parent: [README.md](README.md)
+```md
+# docs 导航
 
-```markdown
-# 文档中心标题
-
-说明整个 docs 体系服务谁，以及包含哪些文档域。
+`docs/` 根 README 只做导航。先读 [项目总览.md](./项目总览.md) 建立整体认知，再按主题进入对应入口。
 
 ## 给 LLM 的快速索引
 
-| 任务 | 入口 |
-| --- | --- |
+| 主题 | 直接入口 | 读取说明 |
+| --- | --- | --- |
+| 项目总览 | [项目总览.md](./项目总览.md) | 仓库整体认知、系统边界、关键目录与阅读顺序。 |
+| 文档规范 | [standards/README.md](./standards/README.md) | 正式 docs 的项目内写作规范入口。 |
+| 文档模板 | [templates/README.md](./templates/README.md) | 当前项目认可的模板骨架入口。 |
 
 ## 给人类的导航
 
-| 目录 | 作用 | 主要读者 |
-| --- | --- | --- |
-
-## 同步要求
-
-说明哪些变更需要触发 docs impact review。
+如果你第一次进入这个仓库，先读 [项目总览.md](./项目总览.md)，再按主题进入对应目录。
 ```

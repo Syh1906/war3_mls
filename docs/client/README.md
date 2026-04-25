@@ -1,6 +1,5 @@
 # 客户端文档
 
-> Parent: [../README.md](../README.md)
 
 本目录说明 War3 地图脚本或测试脚本如何通过 HTTP Bridge 与模拟器通信。
 

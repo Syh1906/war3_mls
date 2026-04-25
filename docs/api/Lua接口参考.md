@@ -1,6 +1,5 @@
 # Lua API 参考
 
-> Parent: [README.md](README.md)
 
 模拟器注入到每个房间 Lua VM 的全部全局 API，与平台 MLS 运行时保持一致。
 

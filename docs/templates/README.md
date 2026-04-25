@@ -1,38 +1,25 @@
-# docs 模板入口
+# docs/templates 导航
 
-> Parent: [../README.md](../README.md)
+`docs/templates/` 的 README 只做导航。这里提供的是当前项目 `docs/` 体系认可的模板骨架；模板只负责起稿骨架，写正文前仍要先读 `docs/standards/README.md` 与对应类型规范。
 
-本目录提供新建正式文档时使用的模板。使用模板前，先查看 `docs/standards/` 中对应规范。
+只列当前项目已经生成的模板，不要预登记未落盘的模板文件。
 
 ## 给 LLM 的快速索引
 
-| 任务 | 入口 |
-| --- | --- |
-| 新建目录导航 | [README 索引模板](README索引模板.md) |
-| 新建 docs 总导航 | [docs 导航 README 模板](docs导航README模板.md) |
-| 新建规范导航 | [standards 导航 README 模板](standards导航README模板.md) |
-| 新建模板导航 | [templates 导航 README 模板](templates导航README模板.md) |
-| 新建治理导航 | [governance 导航 README 模板](governance导航README模板.md) |
-| 新建目录索引 | [目录索引 README 模板](目录索引README模板.md) |
-| 新建长期说明 | [长期说明文档模板](长期说明文档模板.md) |
-| 新建计划 | [计划文档模板](计划文档模板.md) |
-| 新建用户指南 | [用户指南模板](用户指南模板.md) |
-| 新建 API 契约 | [API 契约模板](API契约模板.md) |
-| 新建 LLM 约束 | [LLM 知识约束模板](LLM知识约束模板.md) |
+| 主题 | 直接入口 | 读取说明 |
+| --- | --- | --- |
+| README 模板 | [README索引模板.md](./README索引模板.md) | docs 导航型 README 骨架。 |
+| 目录索引模板 | [目录索引README模板.md](./目录索引README模板.md) | 代码目录或工具目录的索引页骨架。 |
+| 长期说明模板 | [长期说明文档模板.md](./长期说明文档模板.md) | 项目总览、架构、边界和维护规则这类正文骨架。 |
+| 核心导航模板 | [docs导航README模板.md](./docs导航README模板.md) | `docs/README.md` 的专用骨架。 |
+| standards 导航模板 | [standards导航README模板.md](./standards导航README模板.md) | `docs/standards/README.md` 的专用骨架。 |
+| templates 导航模板 | [templates导航README模板.md](./templates导航README模板.md) | `docs/templates/README.md` 的专用骨架。 |
+| governance 导航模板 | [governance导航README模板.md](./governance导航README模板.md) | `docs/governance/README.md` 的专用骨架。 |
+| plans 导航模板 | [plans导航README模板.md](./plans导航README模板.md) | `docs/plans/README.md` 的专用骨架。 |
+| plans 归档导航模板 | [plans归档导航README模板.md](./plans归档导航README模板.md) | `docs/plans/archive/README.md` 的专用骨架。 |
+| 项目总览模板 | [项目总览模板.md](./项目总览模板.md) | `docs/项目总览.md` 的专用骨架。 |
+| 已启用额外正文模板 | [计划文档模板.md](./计划文档模板.md)、[用户指南模板.md](./用户指南模板.md)、[API契约模板.md](./API契约模板.md)、[LLM知识约束模板.md](./LLM知识约束模板.md) | 当前项目已启用的额外正文模板。 |
 
 ## 给人类的导航
 
-| 文件 | 作用 |
-| --- | --- |
-| `项目总览模板.md` | 项目定位和边界说明模板 |
-| `README索引模板.md` | 导航型 README 模板 |
-| `docs导航README模板.md` | `docs/README.md` 模板 |
-| `standards导航README模板.md` | `docs/standards/README.md` 模板 |
-| `templates导航README模板.md` | `docs/templates/README.md` 模板 |
-| `governance导航README模板.md` | `docs/governance/README.md` 模板 |
-| `目录索引README模板.md` | 目录职责和文件索引模板 |
-| `长期说明文档模板.md` | 架构、边界、维护说明模板 |
-| `计划文档模板.md` | 阶段计划和归档模板 |
-| `用户指南模板.md` | 操作指南模板 |
-| `API契约模板.md` | 接口说明模板 |
-| `LLM知识约束模板.md` | LLM 约束条目模板 |
+先确认文档类型和规范，再回到这里选模板。

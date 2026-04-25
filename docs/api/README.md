@@ -1,6 +1,5 @@
 # 接口文档
 
-> Parent: [../README.md](../README.md)
 
 本目录记录模拟器对外暴露的 HTTP 接口、Bridge 通道和注入到 Lua VM 的 API。
 

@@ -1,6 +1,5 @@
 # LLM 知识入口
 
-> Parent: [../README.md](../README.md)
 
 本目录保存 Agent 在维护项目时需要稳定遵守的约束和易错点。
 
