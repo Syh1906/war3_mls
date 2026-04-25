@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.4.5 (2026-04-25)
+
+### 修复
+- 修复 json.encode 分页传输中文键名损坏的问题
+  - send_paged 按字节切割 JSON 字符串时可能断在 UTF-8 多字节字符中间，v0.4.4 的 serde_json 编码器会将不完整 UTF-8 字节转为 Latin-1 字符（单字节 0xE6 → 双字节 C3 A6），导致客户端拼接后 json.decode 失败或键名对不上
+  - json.encode 改为直接构建原始字节输出（Vec\<u8\>），字符串逐字节透传只做 JSON 必要转义，与 cjson/KK 平台行为一致
+  - json.decode 保持 serde_json 不变
+
+## v0.4.4 (2026-04-25)
+
+### 改进
+- 重写 json.encode / json.decode：从 Lua 手写实现替换为 Rust (serde_json) 实现，对齐 cjson 标准
+  - 空 Lua 表 `{}` 序列化为 JSON object `{}`（与 KK 对战平台一致），不再错误地序列化为 `[]`
+  - JSON 合规性由 serde_json 保证（Unicode 转义、数字精度、嵌套结构等）
+  - 非 UTF-8 Lua 字符串安全降级处理
+
 ## v0.4.3 (2026-04-25)
 
 ### 新功能

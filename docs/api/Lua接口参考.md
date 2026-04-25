@@ -200,7 +200,7 @@ local str = json.encode({key = "value", list = {1, 2, 3}})
 local tbl = json.decode('{"key":"value"}')
 ```
 
-纯 Lua 实现，自动注入，无需 require。
+Rust 注入实现，自动提供 `json` 全局表，无需 `require`。`json.encode` 对 Lua 字符串按字节输出并只转义 JSON 必需字符，`json.decode` 使用标准 JSON 解析。
 
 ---
 
