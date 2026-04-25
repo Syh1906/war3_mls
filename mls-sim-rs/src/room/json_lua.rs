@@ -1,5 +1,5 @@
 use mlua::prelude::*;
-use serde_json::{Map, Number, Value as Jv};
+use serde_json::Value as Jv;
 
 pub fn install_json_lib(lua: &Lua) -> LuaResult<()> {
     let json = lua.create_table()?;
@@ -9,10 +9,10 @@ pub fn install_json_lib(lua: &Lua) -> LuaResult<()> {
     Ok(())
 }
 
-fn json_encode(_: &Lua, value: LuaValue) -> LuaResult<String> {
-    let v = lua_to_json(&value);
-    serde_json::to_string(&v)
-        .map_err(|e| LuaError::RuntimeError(format!("json.encode: {e}")))
+fn json_encode(lua: &Lua, value: LuaValue) -> LuaResult<LuaValue> {
+    let mut buf = Vec::new();
+    encode_value(&value, &mut buf);
+    Ok(LuaValue::String(lua.create_string(&buf)?))
 }
 
 fn json_decode(lua: &Lua, value: LuaValue) -> LuaResult<LuaValue> {
@@ -28,6 +28,82 @@ fn json_decode(lua: &Lua, value: LuaValue) -> LuaResult<LuaValue> {
     let v: Jv = serde_json::from_str(&s)
         .map_err(|e| LuaError::RuntimeError(format!("json.decode: {e}")))?;
     json_to_lua(lua, &v)
+}
+
+// ── encode: build JSON as raw bytes (matching cjson byte-pass-through) ──
+
+fn encode_value(v: &LuaValue, buf: &mut Vec<u8>) {
+    match v {
+        LuaValue::Nil => buf.extend_from_slice(b"null"),
+        LuaValue::Boolean(b) => {
+            buf.extend_from_slice(if *b { b"true" } else { b"false" });
+        }
+        LuaValue::Integer(i) => {
+            let s = i.to_string();
+            buf.extend_from_slice(s.as_bytes());
+        }
+        LuaValue::Number(n) => encode_number(*n, buf),
+        LuaValue::String(s) => encode_lua_string(s, buf),
+        LuaValue::Table(t) => encode_table(t, buf),
+        _ => buf.extend_from_slice(b"null"),
+    }
+}
+
+fn encode_number(n: f64, buf: &mut Vec<u8>) {
+    if n.is_nan() || n.is_infinite() {
+        buf.extend_from_slice(b"null");
+        return;
+    }
+    if n == n.floor() && n.abs() < 1e15 {
+        let s = format!("{}", n as i64);
+        buf.extend_from_slice(s.as_bytes());
+    } else {
+        let s = format!("{:.14e}", n);
+        let trimmed = trim_float(&s);
+        buf.extend_from_slice(trimmed.as_bytes());
+    }
+}
+
+fn trim_float(s: &str) -> String {
+    if let Some(dot) = s.find('.') {
+        if let Some(e_pos) = s[dot..].find(|c: char| c == 'e' || c == 'E') {
+            let mantissa = &s[..dot + e_pos];
+            let exp = &s[dot + e_pos..];
+            let trimmed = mantissa.trim_end_matches('0');
+            let trimmed = if trimmed.ends_with('.') {
+                &trimmed[..trimmed.len() - 1]
+            } else {
+                trimmed
+            };
+            if exp == "e0" || exp == "E0" {
+                return trimmed.to_string();
+            }
+            return format!("{}{}", trimmed, exp);
+        }
+    }
+    s.to_string()
+}
+
+/// Write a Lua string as a JSON string value, passing raw bytes through
+/// (only escaping characters required by JSON spec). This matches cjson behavior.
+fn encode_lua_string(s: &mlua::String, buf: &mut Vec<u8>) {
+    let bytes = s.as_bytes();
+    buf.push(b'"');
+    for &b in bytes.iter() {
+        match b {
+            b'\\' => buf.extend_from_slice(b"\\\\"),
+            b'"' => buf.extend_from_slice(b"\\\""),
+            b'\n' => buf.extend_from_slice(b"\\n"),
+            b'\r' => buf.extend_from_slice(b"\\r"),
+            b'\t' => buf.extend_from_slice(b"\\t"),
+            0x00..=0x1f => {
+                let esc = format!("\\u{:04x}", b);
+                buf.extend_from_slice(esc.as_bytes());
+            }
+            _ => buf.push(b),
+        }
+    }
+    buf.push(b'"');
 }
 
 // cjson: empty table → object, sequential 1..n → array, otherwise → object
@@ -50,54 +126,62 @@ fn is_array_table(t: &LuaTable) -> bool {
     true
 }
 
-fn lua_to_json(v: &LuaValue) -> Jv {
-    match v {
-        LuaValue::Nil => Jv::Null,
-        LuaValue::Boolean(b) => Jv::Bool(*b),
-        LuaValue::Integer(i) => Jv::Number(Number::from(*i)),
-        LuaValue::Number(n) => {
-            if n.is_nan() || n.is_infinite() {
-                return Jv::Null;
+fn encode_table(t: &LuaTable, buf: &mut Vec<u8>) {
+    if is_array_table(t) {
+        buf.push(b'[');
+        let len = t.raw_len();
+        for i in 1..=len {
+            if i > 1 {
+                buf.push(b',');
             }
-            if *n == n.floor() && n.abs() < 1e15 {
-                return Jv::Number(Number::from(*n as i64));
-            }
-            Number::from_f64(*n)
-                .map(Jv::Number)
-                .unwrap_or(Jv::Null)
+            let v: LuaValue = t.raw_get(i as i64).unwrap_or(LuaValue::Nil);
+            encode_value(&v, buf);
         }
-        LuaValue::String(s) => Jv::String(lua_bytes_to_string(s)),
-        LuaValue::Table(t) => {
-            if is_array_table(t) {
-                let len = t.raw_len();
-                let mut arr = Vec::with_capacity(len);
-                for i in 1..=len {
-                    let v: LuaValue = t.raw_get(i as i64).unwrap_or(LuaValue::Nil);
-                    arr.push(lua_to_json(&v));
+        buf.push(b']');
+    } else {
+        buf.push(b'{');
+        let mut first = true;
+        for pair in t.pairs::<LuaValue, LuaValue>() {
+            if let Ok((k, v)) = pair {
+                if !first {
+                    buf.push(b',');
                 }
-                Jv::Array(arr)
-            } else {
-                let mut map = Map::new();
-                for pair in t.pairs::<LuaValue, LuaValue>() {
-                    if let Ok((k, v)) = pair {
-                        let key = match &k {
-                            LuaValue::String(s) => lua_bytes_to_string(s),
-                            LuaValue::Integer(i) => i.to_string(),
-                            LuaValue::Number(n) if *n == n.floor() && n.abs() < 1e15 => {
-                                format!("{}", *n as i64)
-                            }
-                            LuaValue::Number(n) => format!("{n}"),
-                            _ => continue,
-                        };
-                        map.insert(key, lua_to_json(&v));
-                    }
-                }
-                Jv::Object(map)
+                first = false;
+                encode_key(&k, buf);
+                buf.push(b':');
+                encode_value(&v, buf);
             }
         }
-        _ => Jv::Null,
+        buf.push(b'}');
     }
 }
+
+fn encode_key(k: &LuaValue, buf: &mut Vec<u8>) {
+    match k {
+        LuaValue::String(s) => encode_lua_string(s, buf),
+        LuaValue::Integer(i) => {
+            let s = i.to_string();
+            buf.push(b'"');
+            buf.extend_from_slice(s.as_bytes());
+            buf.push(b'"');
+        }
+        LuaValue::Number(n) if *n == n.floor() && n.abs() < 1e15 => {
+            let s = format!("{}", *n as i64);
+            buf.push(b'"');
+            buf.extend_from_slice(s.as_bytes());
+            buf.push(b'"');
+        }
+        LuaValue::Number(n) => {
+            let s = format!("{n}");
+            buf.push(b'"');
+            buf.extend_from_slice(s.as_bytes());
+            buf.push(b'"');
+        }
+        _ => buf.extend_from_slice(b"\"\""),
+    }
+}
+
+// ── decode: still uses serde_json (input is always valid JSON/UTF-8) ──
 
 fn json_to_lua(lua: &Lua, v: &Jv) -> LuaResult<LuaValue> {
     Ok(match v {
@@ -126,42 +210,4 @@ fn json_to_lua(lua: &Lua, v: &Jv) -> LuaResult<LuaValue> {
             LuaValue::Table(t)
         }
     })
-}
-
-fn lua_bytes_to_string(s: &mlua::String) -> String {
-    match s.to_str() {
-        Ok(v) => v.to_owned(),
-        Err(_) => {
-            let bytes = s.as_bytes();
-            let mut out = String::with_capacity(bytes.len());
-            let mut i = 0;
-            while i < bytes.len() {
-                let b = bytes[i];
-                if b < 0x80 {
-                    out.push(b as char);
-                    i += 1;
-                } else {
-                    let seq = if b >= 0xF0 {
-                        4
-                    } else if b >= 0xE0 {
-                        3
-                    } else if b >= 0xC0 {
-                        2
-                    } else {
-                        0
-                    };
-                    if seq >= 2 && i + seq <= bytes.len() {
-                        if let Ok(ch) = std::str::from_utf8(&bytes[i..i + seq]) {
-                            out.push_str(ch);
-                            i += seq;
-                            continue;
-                        }
-                    }
-                    out.push(char::from(b));
-                    i += 1;
-                }
-            }
-            out
-        }
-    }
 }
