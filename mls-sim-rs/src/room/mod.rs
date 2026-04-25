@@ -570,6 +570,25 @@ fn room_thread(
         lua.globals().set("Log", log_table).unwrap();
     }
 
+    // Override print() to route output to the GUI console
+    {
+        let emit = emit_log.clone();
+        let print_fn = lua
+            .create_function(move |_lua_ctx: &Lua, args: mlua::MultiValue| {
+                let parts: Vec<String> = args.iter().map(lua_value_to_string).collect();
+                let msg = parts.join("\t");
+                let msg = if msg.len() > MAX_LOG_LEN {
+                    msg[..MAX_LOG_LEN].to_string()
+                } else {
+                    msg
+                };
+                emit("INF", "Lua", msg);
+                Ok(())
+            })
+            .unwrap();
+        lua.globals().set("print", print_fn).unwrap();
+    }
+
     // Ticker callbacks stored by ID (since RegistryKey is not Clone)
     let ticker_callbacks: Arc<Mutex<HashMap<i32, mlua::RegistryKey>>> =
         Arc::new(Mutex::new(HashMap::new()));
@@ -1373,7 +1392,7 @@ fn lua_value_to_string(v: &LuaValue) -> String {
                                 continue;
                             }
                         }
-                        out.push_str(&format!("\\x{:02x}", b));
+                        out.push_str(&format!("\\u00{:02x}", b));
                         i += 1;
                     }
                 }
