@@ -172,6 +172,7 @@ pub struct Room {
     pub command_tx: mpsc::UnboundedSender<RoomCommand>,
     pub log_tx: broadcast::Sender<LogEntry>,
     pub out_event_tx: broadcast::Sender<OutEvent>,
+    pub join_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Room {
@@ -324,16 +325,14 @@ impl RoomManager {
             event_buffer: VecDeque::new(),
         }));
 
-        let room = Room {
-            shared: shared.clone(),
-            command_tx: command_tx.clone(),
-            log_tx: log_tx.clone(),
-            out_event_tx: out_event_tx.clone(),
-        };
+        let shared_for_room = shared.clone();
+        let command_tx_for_room = command_tx.clone();
+        let log_tx_for_room = log_tx.clone();
+        let out_event_tx_for_room = out_event_tx.clone();
 
         // Spawn room thread
         let room_id = id.clone();
-        std::thread::Builder::new()
+        let handle = std::thread::Builder::new()
             .name(format!("room-{}", id))
             .spawn(move || {
                 room_thread(
@@ -348,6 +347,14 @@ impl RoomManager {
                 );
             })
             .expect("failed to spawn room thread");
+
+        let room = Room {
+            shared: shared_for_room,
+            command_tx: command_tx_for_room,
+            log_tx: log_tx_for_room,
+            out_event_tx: out_event_tx_for_room,
+            join_handle: Some(handle),
+        };
 
         self.rooms.insert(id.clone(), room);
         id
@@ -371,6 +378,34 @@ impl RoomManager {
         } else {
             false
         }
+    }
+
+    pub fn shutdown_all(&mut self) {
+        for room in self.rooms.values() {
+            let _ = room.command_tx.send(RoomCommand::Stop {
+                reason: "Shutdown".into(),
+            });
+        }
+        for room in self.rooms.values_mut() {
+            if let Some(handle) = room.join_handle.take() {
+                let start = std::time::Instant::now();
+                while !handle.is_finished() {
+                    if start.elapsed() > std::time::Duration::from_secs(3) {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                if handle.is_finished() {
+                    let _ = handle.join();
+                }
+            }
+        }
+    }
+}
+
+impl Drop for RoomManager {
+    fn drop(&mut self) {
+        self.shutdown_all();
     }
 }
 
@@ -863,6 +898,7 @@ fn room_thread(
             .unwrap();
 
         let s = shared.clone();
+        let ad = archive_dir.clone();
         lua.globals()
             .set(
                 "MsSaveScriptArchive",
@@ -871,16 +907,28 @@ fn room_thread(
                         Some(v) => lua_value_to_string(v),
                         None => String::new(),
                     };
-                    let mut shared = s.write().unwrap();
-                    if let Some(p) = shared.players.get_mut(&idx) {
-                        if data_str.as_bytes().len() > MAX_SCRIPT_ARCHIVE_LEN {
-                            return Ok(ERR_SCRIPT_ARCHIVE_TOO_LONG);
+                    let result = {
+                        let mut shared = s.write().unwrap();
+                        if let Some(p) = shared.players.get_mut(&idx) {
+                            if data_str.as_bytes().len() > MAX_SCRIPT_ARCHIVE_LEN {
+                                ERR_SCRIPT_ARCHIVE_TOO_LONG
+                            } else {
+                                p.script_archive = Some(data_str);
+                                ERR_OK
+                            }
+                        } else {
+                            ERR_PLAYER_NOT_EXIST
                         }
-                        p.script_archive = Some(data_str);
-                        Ok(ERR_OK)
-                    } else {
-                        Ok(ERR_PLAYER_NOT_EXIST)
+                    };
+                    if result == ERR_OK {
+                        let shared = s.read().unwrap();
+                        let _ = crate::storage::save_room_archives(
+                            &ad,
+                            &shared.script_dir.to_string_lossy(),
+                            &shared.players,
+                        );
                     }
+                    Ok(result)
                 })
                 .unwrap(),
             )
@@ -911,21 +959,32 @@ fn room_thread(
         archive_get_api!("MsGetCfgArchive", cfg_archive);
 
         let s = shared.clone();
+        let ad2 = archive_dir.clone();
         let emit_out = emit_out_event.clone();
         lua.globals()
             .set(
                 "MsSetReadArchive",
                 lua.create_function(move |_, (idx, key, value): (i32, String, String)| {
-                    let mut shared = s.write().unwrap();
-                    if let Some(p) = shared.players.get_mut(&idx) {
-                        p.read_archive.insert(key.clone(), value.clone());
+                    let result = {
+                        let mut shared = s.write().unwrap();
+                        if let Some(p) = shared.players.get_mut(&idx) {
+                            p.read_archive.insert(key.clone(), value.clone());
+                            ERR_OK
+                        } else {
+                            ERR_PLAYER_NOT_EXIST
+                        }
+                    };
+                    if result == ERR_OK {
                         let rdata = format!("{}\t{}", key, value);
-                        drop(shared);
                         emit_out(idx, "_rdata".to_string(), rdata);
-                        Ok(ERR_OK)
-                    } else {
-                        Ok(ERR_PLAYER_NOT_EXIST)
+                        let shared = s.read().unwrap();
+                        let _ = crate::storage::save_room_archives(
+                            &ad2,
+                            &shared.script_dir.to_string_lossy(),
+                            &shared.players,
+                        );
                     }
+                    Ok(result)
                 })
                 .unwrap(),
             )
@@ -1212,6 +1271,14 @@ fn room_thread(
                             player_index,
                             &emit_log,
                         );
+                        {
+                            let s = shared.read().unwrap();
+                            let _ = crate::storage::save_room_archives(
+                                &archive_dir,
+                                &s.script_dir.to_string_lossy(),
+                                &s.players,
+                            );
+                        }
                         let mut s = shared.write().unwrap();
                         s.players.remove(&player_index);
                         s.out_queues.remove(&player_index);

@@ -179,6 +179,14 @@ impl GuiApp {
     }
 }
 
+impl Drop for GuiApp {
+    fn drop(&mut self) {
+        if let Ok(mut mgr) = self.manager.write() {
+            mgr.shutdown_all();
+        }
+    }
+}
+
 impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // DPI: sync to native pixels_per_point for crisp rendering
