@@ -40,10 +40,8 @@ async fn json_response(
 }
 
 fn create_room_with_logs(manager: &Arc<RwLock<RoomManager>>) {
-    let script_dir = std::env::temp_dir().join(format!(
-        "mls-sim-debug-api-test-{}",
-        std::process::id()
-    ));
+    let script_dir =
+        std::env::temp_dir().join(format!("mls-sim-debug-api-test-{}", std::process::id()));
     fs::create_dir_all(&script_dir).unwrap();
     fs::write(script_dir.join("main.lua"), "Log.Info('boot ok')\n").unwrap();
 
@@ -119,13 +117,8 @@ async fn clear_debug_logs_only_clears_room_log_buffer() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["cleared"], 2);
 
-    let (status, body) = json_response(
-        app,
-        Method::GET,
-        "/api/debug/rooms/room-001/logs",
-        None,
-    )
-    .await;
+    let (status, body) =
+        json_response(app, Method::GET, "/api/debug/rooms/room-001/logs", None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["count"], 0);
 }
@@ -149,13 +142,7 @@ async fn restart_room_returns_new_room_id_and_service_restart_is_unsupported() {
     assert_eq!(body["room_id"], "room-002");
     assert_eq!(body["status"], "restarted");
 
-    let (status, body) = json_response(
-        app,
-        Method::POST,
-        "/api/debug/service/restart",
-        None,
-    )
-    .await;
+    let (status, body) = json_response(app, Method::POST, "/api/debug/service/restart", None).await;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
     assert_eq!(body["ok"], false);
     assert_eq!(body["errnu"], 1);
@@ -165,13 +152,8 @@ async fn restart_room_returns_new_room_id_and_service_restart_is_unsupported() {
 async fn debug_api_returns_not_found_for_unknown_room() {
     let app = test_app();
 
-    let (status, body) = json_response(
-        app,
-        Method::GET,
-        "/api/debug/rooms/missing/logs",
-        None,
-    )
-    .await;
+    let (status, body) =
+        json_response(app, Method::GET, "/api/debug/rooms/missing/logs", None).await;
 
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(body["ok"], false);

@@ -5,10 +5,7 @@ use super::{section_heading, GuiApp};
 impl GuiApp {
     pub(crate) fn state_tab(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default()
-            .frame(
-                egui::Frame::central_panel(&ctx.style())
-                    .inner_margin(egui::Margin::same(12.0)),
-            )
+            .frame(egui::Frame::central_panel(&ctx.style()).inner_margin(egui::Margin::same(12.0)))
             .show(ctx, |ui: &mut egui::Ui| {
                 let room_ids: Vec<String> = {
                     let manager = self.manager.read().unwrap();
@@ -22,8 +19,7 @@ impl GuiApp {
 
                     ui.add_space(12.0);
                     ui.label("房间:");
-                    let selected_text =
-                        self.state_room_id.as_deref().unwrap_or("-- 选择房间 --");
+                    let selected_text = self.state_room_id.as_deref().unwrap_or("-- 选择房间 --");
                     egui::ComboBox::from_id_salt("state_room_select")
                         .selected_text(selected_text)
                         .width(140.0)

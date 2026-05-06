@@ -1,5 +1,6 @@
 mod console;
 mod events;
+mod profiler;
 mod rooms;
 mod settings;
 mod state_view;
@@ -19,6 +20,7 @@ pub enum Tab {
     Console,
     Events,
     State,
+    Profiler,
     Settings,
 }
 
@@ -58,6 +60,13 @@ pub struct GuiApp {
     pub settings_host: String,
     pub settings_port: String,
     pub settings_archive_dir: String,
+
+    // Profiler
+    pub profiler_room_id: Option<String>,
+    pub profiler_hook_count: i32,
+    pub profiler_window: i32,
+    pub profiler_frame_ms: f32,
+    pub profiler_hover_info: String,
 
     // Status
     pub save_msg: Option<(String, bool, f64)>,
@@ -107,6 +116,11 @@ impl GuiApp {
             auto_scroll: true,
             state_room_id: None,
             state_json_text: String::new(),
+            profiler_room_id: None,
+            profiler_hook_count: 5000,
+            profiler_window: 15,
+            profiler_frame_ms: 50.0,
+            profiler_hover_info: String::new(),
             settings_host: host,
             settings_port: port,
             settings_archive_dir: archive_dir,
@@ -196,7 +210,6 @@ impl eframe::App for GuiApp {
             }
         }
 
-
         self.sync_subscriptions();
         self.drain_channels();
 
@@ -216,26 +229,31 @@ impl eframe::App for GuiApp {
                         (Tab::Console, "控制台"),
                         (Tab::Events, "出站事件"),
                         (Tab::State, "状态"),
+                        (Tab::Profiler, "性能分析"),
                         (Tab::Settings, "设置"),
                     ] {
                         let selected = self.active_tab == tab;
                         let text = egui::RichText::new(label).size(15.0);
                         let text = if selected { text.strong() } else { text };
-                        if ui
-                            .selectable_label(selected, text)
-                            .clicked()
-                        {
+                        if ui.selectable_label(selected, text).clicked() {
                             self.active_tab = tab;
                         }
                     }
 
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui: &mut egui::Ui| {
-                        ui.label(
-                            egui::RichText::new(format!("房间: {}  |  日志: {}", room_count, self.logs.len()))
+                    ui.with_layout(
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui: &mut egui::Ui| {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "房间: {}  |  日志: {}",
+                                    room_count,
+                                    self.logs.len()
+                                ))
                                 .small()
                                 .color(egui::Color32::from_rgb(140, 148, 165)),
-                        );
-                    });
+                            );
+                        },
+                    );
                 });
             });
 
@@ -244,6 +262,7 @@ impl eframe::App for GuiApp {
             Tab::Console => self.console_tab(ctx),
             Tab::Events => self.events_tab(ctx),
             Tab::State => self.state_tab(ctx),
+            Tab::Profiler => self.profiler_tab(ctx),
             Tab::Settings => self.settings_tab(ctx),
         }
 
@@ -282,11 +301,26 @@ fn setup_style(ctx: &egui::Context) {
     let mut style = (*ctx.style()).clone();
 
     style.text_styles = [
-        (egui::TextStyle::Small, egui::FontId::new(13.0, egui::FontFamily::Proportional)),
-        (egui::TextStyle::Body, egui::FontId::new(15.0, egui::FontFamily::Proportional)),
-        (egui::TextStyle::Button, egui::FontId::new(15.0, egui::FontFamily::Proportional)),
-        (egui::TextStyle::Heading, egui::FontId::new(20.0, egui::FontFamily::Proportional)),
-        (egui::TextStyle::Monospace, egui::FontId::new(14.0, egui::FontFamily::Monospace)),
+        (
+            egui::TextStyle::Small,
+            egui::FontId::new(13.0, egui::FontFamily::Proportional),
+        ),
+        (
+            egui::TextStyle::Body,
+            egui::FontId::new(15.0, egui::FontFamily::Proportional),
+        ),
+        (
+            egui::TextStyle::Button,
+            egui::FontId::new(15.0, egui::FontFamily::Proportional),
+        ),
+        (
+            egui::TextStyle::Heading,
+            egui::FontId::new(20.0, egui::FontFamily::Proportional),
+        ),
+        (
+            egui::TextStyle::Monospace,
+            egui::FontId::new(14.0, egui::FontFamily::Monospace),
+        ),
     ]
     .into();
 
@@ -310,8 +344,10 @@ fn setup_style(ctx: &egui::Context) {
 
     v.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(35, 36, 44);
     v.widgets.noninteractive.weak_bg_fill = egui::Color32::from_rgb(32, 33, 40);
-    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(62, 64, 80));
-    v.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(200, 205, 220));
+    v.widgets.noninteractive.bg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(62, 64, 80));
+    v.widgets.noninteractive.fg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(200, 205, 220));
     v.widgets.noninteractive.rounding = egui::Rounding::same(4.0);
 
     v.widgets.inactive.bg_fill = egui::Color32::from_rgb(45, 46, 58);

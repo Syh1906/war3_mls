@@ -23,7 +23,11 @@ fn json_decode(lua: &Lua, value: LuaValue) -> LuaResult<LuaValue> {
             Ok(s) => s.to_owned(),
             Err(e) => return Err(LuaError::RuntimeError(format!("json.decode: {e}"))),
         },
-        _ => return Err(LuaError::RuntimeError("json.decode expects a string".into())),
+        _ => {
+            return Err(LuaError::RuntimeError(
+                "json.decode expects a string".into(),
+            ))
+        }
     };
     let v: Jv = serde_json::from_str(&s)
         .map_err(|e| LuaError::RuntimeError(format!("json.decode: {e}")))?;

@@ -5,10 +5,7 @@ use super::{section_heading, GuiApp};
 impl GuiApp {
     pub(crate) fn settings_tab(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default()
-            .frame(
-                egui::Frame::central_panel(&ctx.style())
-                    .inner_margin(egui::Margin::same(12.0)),
-            )
+            .frame(egui::Frame::central_panel(&ctx.style()).inner_margin(egui::Margin::same(12.0)))
             .show(ctx, |ui: &mut egui::Ui| {
                 ui.set_max_width(500.0);
 
@@ -75,8 +72,7 @@ impl GuiApp {
                                 self.save_msg = Some(("配置已保存".into(), false, now));
                             }
                             Err(e) => {
-                                self.save_msg =
-                                    Some((format!("保存失败: {}", e), true, now));
+                                self.save_msg = Some((format!("保存失败: {}", e), true, now));
                             }
                         }
                     }
@@ -106,11 +102,11 @@ impl GuiApp {
                 ui.group(|ui: &mut egui::Ui| {
                     section_heading(ui, "关于");
                     ui.add_space(2.0);
-                    ui.label(format!(
-                        "MLS 云脚本模拟器 v{}",
-                        env!("CARGO_PKG_VERSION")
-                    ));
+                    ui.label(format!("MLS 云脚本模拟器 v{}", env!("CARGO_PKG_VERSION")));
                     ui.label("本地 Lua 云脚本测试环境");
+                    ui.add_space(4.0);
+                    ui.label(format!("参与者: {}", env!("CARGO_PKG_AUTHORS")));
+                    ui.hyperlink_to("GitHub 仓库", env!("CARGO_PKG_REPOSITORY"));
                     ui.add_space(4.0);
                     ui.label(
                         egui::RichText::new(format!(
