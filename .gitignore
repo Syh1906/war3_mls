@@ -13,6 +13,7 @@
 
 # Rust build output
 target/
+mls-sim-rs/target/
 **/*.rs.bk
 
 # Local runtime config and generated data

@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+### 新功能
+- 新增快捷命令功能，命令输入栏
+  - `rooms`
+  - `create <脚本目录> [模式]`
+  - `select <房间>`
+  - `stop <房间>`
+  - `destroy <房间>`
+  - `restart <房间>`
+  - `join <房间> <槽位> [名称]`
+  - `leave <房间> <槽位>`
+  - `exit <房间> <槽位>`
+  - `event <房间> <事件名> [数据] [玩家]`
+
+### 改进
+- 命令输入栏会根据输入内容显示悬浮命令提示
+- 命令输入栏获得焦点且内容为空时，会悬浮显示全部命令
+- 程序窗口失去激活焦点时，命令输入栏会释放焦点
+
+## v0.5.1 (2026-05-10)
+
+### 修复
+- 修复自定义 `require` 不识别 Lua 5.3 内置模块的问题
+  - `require 'utf8'`、`require 'math'`、`require 'string'` 等调用会报 `module not found`
+  - 在文件搜索前新增全局表查找，已注册的内置模块（utf8、math、string、table、coroutine、os、io、debug）和项目自定义模块（json、Log、Timer 等）均可通过 `require` 正常加载
+
 ## v0.5.0 (2026-04-28)
 
 ### 新功能

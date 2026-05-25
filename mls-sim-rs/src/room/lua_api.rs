@@ -937,6 +937,17 @@ fn install_require(lua: &Lua, script_dir: PathBuf) -> LuaResult<()> {
             }
         }
 
+        {
+            let globals = lua_ctx.globals();
+            if let Ok(val) = globals.get::<LuaValue>(&*modname) {
+                if matches!(val, LuaValue::Table(_) | LuaValue::Function(_)) {
+                    let key = lua_ctx.create_registry_value(val.clone())?;
+                    loaded_modules.lock().unwrap().insert(modname, key);
+                    return Ok(val);
+                }
+            }
+        }
+
         let rel_path = if modname.contains('/') || modname.contains('\\') {
             modname.clone()
         } else {
