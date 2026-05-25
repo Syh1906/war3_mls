@@ -766,7 +766,7 @@ fn show_command_hint(ctx: &egui::Context, response: &egui::Response, input: &str
 fn matching_command_hints(input: &str) -> Vec<&'static CommandHint> {
     let trimmed = input.trim_start();
     if trimmed.is_empty() {
-        return Vec::new();
+        return COMMAND_HINTS.iter().collect();
     }
 
     let command = trimmed
