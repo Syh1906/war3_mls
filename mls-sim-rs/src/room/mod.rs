@@ -1,7 +1,9 @@
 pub mod json_lua;
+pub mod lua_api;
 mod profiler;
 
 use crate::player::Player;
+use crate::simulation::RoomSimulationData;
 use mlua::prelude::*;
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
@@ -24,8 +26,13 @@ pub const ERR_PLAYER_NOT_EXIST: i32 = 3;
 pub const ERR_EVENT_KEY_LEN: i32 = 4;
 pub const ERR_EVENT_KEY_INVALID: i32 = 5;
 pub const ERR_EVENT_VALUE_LEN: i32 = 6;
+pub const ERR_EVENT_VALUE_INVALID: i32 = 7;
+pub const ERR_ARCHIVE_KEY_LEN: i32 = 8;
+pub const ERR_ARCHIVE_VALUE_LEN: i32 = 9;
+pub const ERR_TEXT_TOO_LONG: i32 = 10;
 pub const ERR_SCRIPT_ARCHIVE_TOO_LONG: i32 = 11;
 pub const ERR_ITEM_NOT_ENOUGH: i32 = 1259;
+pub const ERR_ITEM_NOT_FOUND: i32 = 10133;
 
 fn now_ts() -> f64 {
     SystemTime::now()
@@ -159,6 +166,7 @@ pub struct RoomSharedState {
     pub mode_id: i32,
     pub start_ts: i64,
     pub loaded_ts: i64,
+    pub simulation: RoomSimulationData,
     pub players: HashMap<i32, Player>,
     pub out_queues: HashMap<i32, VecDeque<OutEvent>>,
     pub log_buffer: VecDeque<LogEntry>,
@@ -189,6 +197,7 @@ impl RoomSharedState {
             "start_ts": self.start_ts,
             "loaded_ts": self.loaded_ts,
             "game_time": game_time,
+            "simulation": self.simulation,
             "player_count": self.players.values().filter(|p| p.is_connected).count(),
             "players": players,
         })
@@ -343,6 +352,18 @@ impl RoomManager {
         players: HashMap<i32, Player>,
         archive_dir: String,
     ) -> String {
+        let simulation = RoomSimulationData::default_for_players(&players);
+        self.create_room_with_simulation(script_dir, mode_id, players, simulation, archive_dir)
+    }
+
+    pub fn create_room_with_simulation(
+        &mut self,
+        script_dir: PathBuf,
+        mode_id: i32,
+        players: HashMap<i32, Player>,
+        simulation: RoomSimulationData,
+        archive_dir: String,
+    ) -> String {
         self.next_id += 1;
         let id = format!("room-{:03}", self.next_id);
         let (command_tx, command_rx) = mpsc::unbounded_channel();
@@ -362,6 +383,7 @@ impl RoomManager {
             mode_id,
             start_ts: now_secs(),
             loaded_ts: 0,
+            simulation,
             players,
             out_queues,
             log_buffer: VecDeque::new(),
@@ -433,16 +455,23 @@ impl RoomManager {
         reason: String,
     ) -> Option<String> {
         let room = self.rooms.remove(id)?;
-        let (script_dir, mode_id, players) = {
+        let (script_dir, mode_id, players, simulation) = {
             let shared = room.shared.read().unwrap();
             (
                 shared.script_dir.clone(),
                 shared.mode_id,
                 shared.players.clone(),
+                shared.simulation.clone(),
             )
         };
         room.stop(reason);
-        Some(self.create_room(script_dir, mode_id, players, archive_dir))
+        Some(self.create_room_with_simulation(
+            script_dir,
+            mode_id,
+            players,
+            simulation,
+            archive_dir,
+        ))
     }
 
     pub fn shutdown_all(&mut self) {
@@ -590,627 +619,35 @@ fn room_thread(
     };
     lua.set_memory_limit(10 * 1024 * 1024).ok();
 
-    // Install JSON library
-    if let Err(e) = json_lua::install_json_lib(&lua) {
-        emit_log("ERR", "System", format!("JSON lib load failed: {}", e));
-        shared.write().unwrap().status = RoomStatus::Error;
-        shared.write().unwrap().error_message = e.to_string();
-        return;
-    }
-
-    // Install Log API
-    {
-        let log_table = lua.create_table().unwrap();
-        for (method, level) in [("Debug", "DBG"), ("Info", "INF"), ("Error", "ERR")] {
-            let emit = emit_log.clone();
-            let func = lua
-                .create_function({
-                    let level = level.to_string();
-                    let emit = emit.clone();
-                    move |lua_ctx: &Lua, args: mlua::MultiValue| {
-                        let msg = if args.is_empty() {
-                            String::new()
-                        } else if args.len() == 1 {
-                            lua_value_to_string(&args[0])
-                        } else {
-                            let string_table: mlua::Table = lua_ctx.globals().get("string")?;
-                            let sf: LuaFunction = string_table.get("format")?;
-                            match sf.call::<String>(args.clone()) {
-                                Ok(s) => s,
-                                Err(_) => lua_value_to_string(&args[0]),
-                            }
-                        };
-                        let msg = if msg.len() > MAX_LOG_LEN {
-                            msg[..MAX_LOG_LEN].to_string()
-                        } else {
-                            msg
-                        };
-                        emit(&level, "Lua", msg);
-                        Ok(())
-                    }
-                })
-                .unwrap();
-            log_table.set(method, func).unwrap();
-        }
-        lua.globals().set("Log", log_table).unwrap();
-    }
-
-    // Override print() to route output to the GUI console
-    {
-        let emit = emit_log.clone();
-        let print_fn = lua
-            .create_function(move |_lua_ctx: &Lua, args: mlua::MultiValue| {
-                let parts: Vec<String> = args.iter().map(lua_value_to_string).collect();
-                let msg = parts.join("\t");
-                let msg = if msg.len() > MAX_LOG_LEN {
-                    msg[..MAX_LOG_LEN].to_string()
-                } else {
-                    msg
-                };
-                emit("INF", "Lua", msg);
-                Ok(())
-            })
-            .unwrap();
-        lua.globals().set("print", print_fn).unwrap();
-    }
-
     // Ticker callbacks stored by ID (since RegistryKey is not Clone)
     let ticker_callbacks: Arc<Mutex<HashMap<i32, mlua::RegistryKey>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let next_ticker_id = Arc::new(AtomicI32::new(1));
 
-    // Install Timer API
-    {
-        let timer_table = lua.create_table().unwrap();
-        let cmd_tx = command_tx.clone();
-        let running_clone = running.clone();
-        let timer_after = lua
-            .create_function({
-                let cmd_tx = cmd_tx.clone();
-                let running = running_clone.clone();
-                move |lua_ctx: &Lua, (seconds, callback): (f64, LuaFunction)| {
-                    let key = lua_ctx.create_registry_value(callback)?;
-                    let cmd_tx = cmd_tx.clone();
-                    let running = running.clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_secs_f64(seconds.max(0.0)));
-                        if running.load(Ordering::Relaxed) {
-                            let _ = cmd_tx.send(RoomCommand::TimerCallback { func_key: key });
-                        }
-                    });
-                    Ok(())
-                }
-            })
-            .unwrap();
-        timer_table.set("After", timer_after).unwrap();
-
-        let timer_ticker = lua
-            .create_function({
-                let cmd_tx = cmd_tx.clone();
-                let running = running_clone.clone();
-                let ticker_cbs = ticker_callbacks.clone();
-                let next_tid = next_ticker_id.clone();
-                move |lua_ctx: &Lua, (seconds, callback): (f64, LuaFunction)| {
-                    let ticker_id = next_tid.fetch_add(1, Ordering::Relaxed);
-                    let key = lua_ctx.create_registry_value(callback)?;
-                    ticker_cbs.lock().unwrap().insert(ticker_id, key);
-
-                    let cancelled = Arc::new(AtomicBool::new(false));
-                    let cancelled_clone = cancelled.clone();
-                    let cmd_tx = cmd_tx.clone();
-                    let running = running.clone();
-
-                    std::thread::spawn(move || loop {
-                        std::thread::sleep(std::time::Duration::from_secs_f64(seconds.max(0.001)));
-                        if cancelled_clone.load(Ordering::Relaxed)
-                            || !running.load(Ordering::Relaxed)
-                        {
-                            break;
-                        }
-                        let _ = cmd_tx.send(RoomCommand::TickerFire { ticker_id });
-                    });
-
-                    let ticker = lua_ctx.create_table()?;
-                    ticker.set(
-                        "Cancel",
-                        lua_ctx.create_function({
-                            let cancel_flag = cancelled.clone();
-                            move |_, ()| {
-                                cancel_flag.store(true, Ordering::Relaxed);
-                                Ok(())
-                            }
-                        })?,
-                    )?;
-                    Ok(ticker)
-                }
-            })
-            .unwrap();
-        timer_table.set("NewTicker", timer_ticker).unwrap();
-        lua.globals().set("Timer", timer_table).unwrap();
-    }
-
-    // Install Event API (RegisterEvent / UnregisterEvent)
-    {
-        let handlers = event_handlers.clone();
-        let next_id = next_event_id.clone();
-        let register = lua
-            .create_function(
-                move |lua_ctx: &Lua, (ename, callback): (String, LuaFunction)| {
-                    let id = next_id.fetch_add(1, Ordering::Relaxed);
-                    let key = lua_ctx.create_registry_value(callback)?;
-                    let mut h = handlers.lock().unwrap();
-                    h.entry(ename)
-                        .or_insert_with(Vec::new)
-                        .push(EventHandler { id, func_key: key });
-                    Ok(id)
-                },
-            )
-            .unwrap();
-        lua.globals().set("RegisterEvent", register).unwrap();
-
-        let handlers = event_handlers.clone();
-        let unregister = lua
-            .create_function(move |_lua_ctx: &Lua, eid: i32| {
-                let mut h = handlers.lock().unwrap();
-                for handlers_list in h.values_mut() {
-                    handlers_list.retain(|eh| eh.id != eid);
-                }
-                Ok(())
-            })
-            .unwrap();
-        lua.globals().set("UnregisterEvent", unregister).unwrap();
-    }
-
-    // Install Player API
-    {
-        let s = shared.clone();
-        lua.globals()
-            .set(
-                "MsGetPlayerName",
-                lua.create_function(move |_, idx: i32| {
-                    let shared = s.read().unwrap();
-                    Ok(shared
-                        .players
-                        .get(&idx)
-                        .map(|p| p.name.clone())
-                        .unwrap_or_default())
-                })
-                .unwrap(),
-            )
-            .unwrap();
-
-        macro_rules! player_int_api {
-            ($name:expr, $field:ident) => {{
-                let s = shared.clone();
-                lua.globals()
-                    .set(
-                        $name,
-                        lua.create_function(move |_, idx: i32| {
-                            let shared = s.read().unwrap();
-                            Ok(shared.players.get(&idx).map(|p| p.$field).unwrap_or(0))
-                        })
-                        .unwrap(),
-                    )
-                    .unwrap();
-            }};
-        }
-
-        player_int_api!("MsGetPlayerMapLevel", map_level);
-        player_int_api!("MsGetPlayerMapExp", map_exp);
-        player_int_api!("MsGetTestPlayTime", test_play_time);
-        player_int_api!("MsGetPlayedCount", played_count);
-
-        let s = shared.clone();
-        lua.globals()
-            .set(
-                "MsGetPlayedTime",
-                lua.create_function(move |_, idx: i32| {
-                    let shared = s.read().unwrap();
-                    Ok(shared
-                        .players
-                        .get(&idx)
-                        .map(|p| p.played_time())
-                        .unwrap_or(0))
-                })
-                .unwrap(),
-            )
-            .unwrap();
-    }
-
-    // Install Room API
-    {
-        let s = shared.clone();
-        lua.globals()
-            .set(
-                "MsGetRoomStartTs",
-                lua.create_function(move |_, ()| Ok(s.read().unwrap().start_ts))
-                    .unwrap(),
-            )
-            .unwrap();
-
-        let s = shared.clone();
-        lua.globals()
-            .set(
-                "MsGetRoomLoadedTs",
-                lua.create_function(move |_, ()| Ok(s.read().unwrap().loaded_ts))
-                    .unwrap(),
-            )
-            .unwrap();
-
-        let s = shared.clone();
-        lua.globals()
-            .set(
-                "MsGetRoomGameTime",
-                lua.create_function(move |_, ()| {
-                    let shared = s.read().unwrap();
-                    if shared.loaded_ts == 0 {
-                        Ok(0i64)
-                    } else {
-                        Ok(now_secs() - shared.loaded_ts)
-                    }
-                })
-                .unwrap(),
-            )
-            .unwrap();
-
-        let s = shared.clone();
-        lua.globals()
-            .set(
-                "MsGetRoomPlayerCount",
-                lua.create_function(move |_, ()| {
-                    let shared = s.read().unwrap();
-                    Ok(shared.players.values().filter(|p| p.is_connected).count() as i32)
-                })
-                .unwrap(),
-            )
-            .unwrap();
-
-        let s = shared.clone();
-        lua.globals()
-            .set(
-                "MsGetRoomModeId",
-                lua.create_function(move |_, ()| Ok(s.read().unwrap().mode_id))
-                    .unwrap(),
-            )
-            .unwrap();
-    }
-
-    // Install Item API
-    {
-        let s = shared.clone();
-        lua.globals()
-            .set(
-                "MsGetPlayerItem",
-                lua.create_function(move |_, (idx, key): (i32, String)| {
-                    let shared = s.read().unwrap();
-                    Ok(shared
-                        .players
-                        .get(&idx)
-                        .and_then(|p| p.items.get(&key))
-                        .copied()
-                        .unwrap_or(0))
-                })
-                .unwrap(),
-            )
-            .unwrap();
-
-        let s = shared.clone();
-        let emit_out = emit_out_event.clone();
-        let trans_counter = trans_id_counter.clone();
-        lua.globals()
-            .set(
-                "MsConsumeItem",
-                lua.create_function(move |_lua_ctx: &Lua, (idx, iteminfo_json): (i32, String)| {
-                    let trans_id = trans_counter.fetch_add(1, Ordering::Relaxed) + 1;
-                    let mut shared = s.write().unwrap();
-                    if !shared.players.contains_key(&idx) {
-                        let result = serde_json::json!({
-                            "trans_id": trans_id,
-                            "errnu": ERR_PLAYER_NOT_EXIST,
-                            "iteminfo": {},
-                        });
-                        drop(shared);
-                        emit_out(idx, "_citemret".to_string(), result.to_string());
-                        return Ok(trans_id);
-                    }
-
-                    let items_to_consume: HashMap<String, i32> =
-                        match serde_json::from_str(&iteminfo_json) {
-                            Ok(v) => v,
-                            Err(_) => {
-                                let result = serde_json::json!({
-                                    "trans_id": trans_id,
-                                    "errnu": ERR_UNKNOWN,
-                                    "iteminfo": {},
-                                });
-                                drop(shared);
-                                emit_out(idx, "_citemret".to_string(), result.to_string());
-                                return Ok(trans_id);
-                            }
-                        };
-
-                    let player = shared.players.get(&idx).unwrap();
-                    for (key, count) in &items_to_consume {
-                        if player.items.get(key).copied().unwrap_or(0) < *count {
-                            let result = serde_json::json!({
-                                "trans_id": trans_id,
-                                "errnu": ERR_ITEM_NOT_ENOUGH,
-                                "iteminfo": items_to_consume,
-                            });
-                            drop(shared);
-                            emit_out(idx, "_citemret".to_string(), result.to_string());
-                            return Ok(trans_id);
-                        }
-                    }
-
-                    let player = shared.players.get_mut(&idx).unwrap();
-                    for (key, count) in &items_to_consume {
-                        let cur = player.items.get(key).copied().unwrap_or(0);
-                        player.items.insert(key.clone(), cur - count);
-                    }
-
-                    let result = serde_json::json!({
-                        "trans_id": trans_id,
-                        "errnu": ERR_OK,
-                        "iteminfo": items_to_consume,
-                    });
-                    drop(shared);
-                    emit_out(idx, "_citemret".to_string(), result.to_string());
-                    Ok(trans_id)
-                })
-                .unwrap(),
-            )
-            .unwrap();
-    }
-
-    // Install Archive API
-    {
-        let s = shared.clone();
-        lua.globals()
-            .set(
-                "MsGetScriptArchive",
-                lua.create_function(move |_, idx: i32| {
-                    let shared = s.read().unwrap();
-                    Ok(shared
-                        .players
-                        .get(&idx)
-                        .and_then(|p| p.script_archive.clone())
-                        .unwrap_or_default())
-                })
-                .unwrap(),
-            )
-            .unwrap();
-
-        let s = shared.clone();
-        let ad = archive_dir.clone();
-        lua.globals()
-            .set(
-                "MsSaveScriptArchive",
-                lua.create_function(move |_, (idx, data): (i32, mlua::MultiValue)| {
-                    let data_str = match data.iter().next() {
-                        Some(v) => lua_value_to_string(v),
-                        None => String::new(),
-                    };
-                    let result = {
-                        let mut shared = s.write().unwrap();
-                        if let Some(p) = shared.players.get_mut(&idx) {
-                            if data_str.as_bytes().len() > MAX_SCRIPT_ARCHIVE_LEN {
-                                ERR_SCRIPT_ARCHIVE_TOO_LONG
-                            } else {
-                                p.script_archive = Some(data_str);
-                                ERR_OK
-                            }
-                        } else {
-                            ERR_PLAYER_NOT_EXIST
-                        }
-                    };
-                    if result == ERR_OK {
-                        let shared = s.read().unwrap();
-                        let _ = crate::storage::save_room_archives(
-                            &ad,
-                            &shared.script_dir.to_string_lossy(),
-                            &shared.players,
-                        );
-                    }
-                    Ok(result)
-                })
-                .unwrap(),
-            )
-            .unwrap();
-
-        macro_rules! archive_get_api {
-            ($name:expr, $field:ident) => {{
-                let s = shared.clone();
-                lua.globals()
-                    .set(
-                        $name,
-                        lua.create_function(move |_, (idx, key): (i32, String)| {
-                            let shared = s.read().unwrap();
-                            Ok(shared
-                                .players
-                                .get(&idx)
-                                .and_then(|p| p.$field.get(&key).cloned())
-                                .unwrap_or_default())
-                        })
-                        .unwrap(),
-                    )
-                    .unwrap();
-            }};
-        }
-
-        archive_get_api!("MsGetCommonArchive", common_archive);
-        archive_get_api!("MsGetReadArchive", read_archive);
-        archive_get_api!("MsGetCfgArchive", cfg_archive);
-
-        let s = shared.clone();
-        let ad2 = archive_dir.clone();
-        let emit_out = emit_out_event.clone();
-        lua.globals()
-            .set(
-                "MsSetReadArchive",
-                lua.create_function(move |_, (idx, key, value): (i32, String, String)| {
-                    let result = {
-                        let mut shared = s.write().unwrap();
-                        if let Some(p) = shared.players.get_mut(&idx) {
-                            p.read_archive.insert(key.clone(), value.clone());
-                            ERR_OK
-                        } else {
-                            ERR_PLAYER_NOT_EXIST
-                        }
-                    };
-                    if result == ERR_OK {
-                        let rdata = format!("{}\t{}", key, value);
-                        emit_out(idx, "_rdata".to_string(), rdata);
-                        let shared = s.read().unwrap();
-                        let _ = crate::storage::save_room_archives(
-                            &ad2,
-                            &shared.script_dir.to_string_lossy(),
-                            &shared.players,
-                        );
-                    }
-                    Ok(result)
-                })
-                .unwrap(),
-            )
-            .unwrap();
-    }
-
-    // Install Control API (MsSendMlEvent, MsEnd)
-    {
-        let s = shared.clone();
-        let emit_out = emit_out_event.clone();
-        lua.globals()
-            .set(
-                "MsSendMlEvent",
-                lua.create_function(move |_, (idx, ename, evalue): (i32, String, LuaValue)| {
-                    let evalue = lua_value_to_string(&evalue);
-                    let err = validate_user_event(&ename, &evalue);
-                    if err != ERR_OK {
-                        return Ok(err);
-                    }
-                    if idx >= 0 && !s.read().unwrap().players.contains_key(&idx) {
-                        return Ok(ERR_PLAYER_NOT_EXIST);
-                    }
-
-                    emit_out(idx, ename, evalue);
-                    Ok(ERR_OK)
-                })
-                .unwrap(),
-            )
-            .unwrap();
-
-        let cmd_tx = command_tx.clone();
-        let emit = emit_log.clone();
-        lua.globals()
-            .set(
-                "MsEnd",
-                lua.create_function(move |_, (idx, reason): (i32, String)| {
-                    emit(
-                        "INF",
-                        "System",
-                        format!("MsEnd called: player={} reason={}", idx, reason),
-                    );
-                    let _ = cmd_tx.send(RoomCommand::Stop { reason });
-                    Ok(ERR_OK)
-                })
-                .unwrap(),
-            )
-            .unwrap();
-    }
-
-    // Install custom require
-    {
-        let script_dir_clone = script_dir.clone();
-        let dir_stack: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(vec![script_dir.clone()]));
-        let loaded_modules: Arc<Mutex<HashMap<String, mlua::RegistryKey>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-
-        let require_fn = lua
-            .create_function(move |lua_ctx: &Lua, modname: String| {
-                // Check cache
-                {
-                    let modules = loaded_modules.lock().unwrap();
-                    if let Some(key) = modules.get(&modname) {
-                        let val: LuaValue = lua_ctx.registry_value(key)?;
-                        return Ok(val);
-                    }
-                }
-
-                // Resolve path
-                let rel_path = if modname.contains('/') || modname.contains('\\') {
-                    modname.clone()
-                } else {
-                    modname.replace('.', "/")
-                };
-
-                let search_dirs = {
-                    let stack = dir_stack.lock().unwrap();
-                    let mut dirs = Vec::new();
-                    if let Some(top) = stack.last() {
-                        dirs.push(top.clone());
-                    }
-                    dirs.push(script_dir_clone.clone());
-                    dirs
-                };
-
-                let mut found_path = None;
-                for sdir in &search_dirs {
-                    for candidate in [
-                        sdir.join(format!("{}.lua", rel_path)),
-                        sdir.join(&rel_path).join("init.lua"),
-                    ] {
-                        let normalized = candidate
-                            .canonicalize()
-                            .unwrap_or_else(|_| candidate.clone());
-                        if normalized.exists() {
-                            found_path = Some(normalized);
-                            break;
-                        }
-                    }
-                    if found_path.is_some() {
-                        break;
-                    }
-                }
-
-                let fpath = found_path.ok_or_else(|| {
-                    mlua::Error::RuntimeError(format!("module '{}' not found", modname))
-                })?;
-
-                let code = std::fs::read_to_string(&fpath).map_err(|e| {
-                    mlua::Error::RuntimeError(format!("failed to read {}: {}", fpath.display(), e))
-                })?;
-
-                let mod_dir = fpath.parent().unwrap().to_path_buf();
-                dir_stack.lock().unwrap().push(mod_dir);
-
-                let chunk_name = format!("@{}", modname);
-                let result = lua_ctx
-                    .load(&code)
-                    .set_name(&chunk_name)
-                    .call::<LuaValue>(());
-
-                dir_stack.lock().unwrap().pop();
-
-                match result {
-                    Ok(val) => {
-                        let store_val = if val == LuaValue::Nil {
-                            LuaValue::Boolean(true)
-                        } else {
-                            val.clone()
-                        };
-                        let key = lua_ctx.create_registry_value(store_val.clone())?;
-                        loaded_modules.lock().unwrap().insert(modname, key);
-                        Ok(if val == LuaValue::Nil {
-                            LuaValue::Boolean(true)
-                        } else {
-                            val
-                        })
-                    }
-                    Err(e) => Err(e),
-                }
-            })
-            .unwrap();
-        lua.globals().set("require", require_fn).unwrap();
+    if let Err(e) = json_lua::install_json_lib(&lua).and_then(|_| {
+        lua_api::install_lua_apis(
+            &lua,
+            lua_api::InstallLuaApiContext {
+                shared: shared.clone(),
+                command_tx: command_tx.clone(),
+                running: running.clone(),
+                event_handlers: event_handlers.clone(),
+                ticker_callbacks: ticker_callbacks.clone(),
+                next_event_id: next_event_id.clone(),
+                next_ticker_id: next_ticker_id.clone(),
+                trans_id_counter: trans_id_counter.clone(),
+                emit_log: emit_log.clone(),
+                emit_out_event: emit_out_event.clone(),
+                archive_dir: archive_dir.clone(),
+                script_dir: script_dir.clone(),
+            },
+        )
+    }) {
+        emit_log("ERR", "System", format!("Lua API install failed: {}", e));
+        let mut s = shared.write().unwrap();
+        s.status = RoomStatus::Error;
+        s.error_message = e.to_string();
+        return;
     }
 
     // Load and run main.lua
@@ -1470,51 +907,6 @@ fn room_thread(
         }
     }
     emit_log("INF", "System", "Room stopped".to_string());
-}
-
-fn lua_value_to_string(v: &LuaValue) -> String {
-    match v {
-        LuaValue::String(s) => match s.to_str() {
-            Ok(valid) => valid.to_string(),
-            Err(_) => {
-                let bytes: &[u8] = &s.as_bytes();
-                let mut out = String::with_capacity(bytes.len());
-                let mut i = 0;
-                while i < bytes.len() {
-                    let b = bytes[i];
-                    if b < 0x80 {
-                        out.push(b as char);
-                        i += 1;
-                    } else {
-                        let seq_len = if b >= 0xF0 {
-                            4
-                        } else if b >= 0xE0 {
-                            3
-                        } else if b >= 0xC0 {
-                            2
-                        } else {
-                            0
-                        };
-                        if seq_len >= 2 && i + seq_len <= bytes.len() {
-                            if let Ok(ch) = std::str::from_utf8(&bytes[i..i + seq_len]) {
-                                out.push_str(ch);
-                                i += seq_len;
-                                continue;
-                            }
-                        }
-                        out.push_str(&format!("\\u00{:02x}", b));
-                        i += 1;
-                    }
-                }
-                out
-            }
-        },
-        LuaValue::Integer(i) => i.to_string(),
-        LuaValue::Number(n) => n.to_string(),
-        LuaValue::Boolean(b) => b.to_string(),
-        LuaValue::Nil => "nil".to_string(),
-        _ => format!("{:?}", v),
-    }
 }
 
 fn dispatch_lua_event<F>(

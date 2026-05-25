@@ -6,6 +6,20 @@
   "auto_room": {
     "script_dir": "D:/Code/MlScriptFolder/script_compile",
     "mode_id": 0,
+    "map_version": "local-dev",
+    "env_type": -1,
+    "prebook_count": 128,
+    "rankings_loaded": true,
+    "rankings": {
+      "-1": [
+        {"player_index": 0, "player_name": "Alice", "value": 10},
+        {"player_index": 1, "player_name": "Bob", "value": 5}
+      ],
+      "0": [
+        {"player_index": 0, "player_name": "Alice", "value": 1000},
+        {"player_index": 1, "player_name": "Bob", "value": 500}
+      ]
+    },
     "players": [
       {
         "index": 0,
@@ -13,7 +27,48 @@
         "items": {"VIP001": 1},
         "map_level": 1,
         "map_exp": 0,
-        "played_count": 1
+        "played_count": 1,
+        "platform": {
+          "guid": 1000000000000,
+          "plat_level": 30,
+          "vip_level": 1,
+          "map_vip_level": 1,
+          "vip_types": {"6": 1},
+          "is_author": 1,
+          "is_collected": 1,
+          "is_backflow": 0
+        },
+        "activity": {
+          "day_rounds": 3,
+          "since_last_game": 3600,
+          "lottery_counts": {"1001": 1}
+        },
+        "achievements": {
+          "point": 120,
+          "done": {"ACH_001": 1}
+        },
+        "tasks": {
+          "progress": {
+            "1001": {"total": 10, "current": 3, "done": 0}
+          }
+        },
+        "sign_in": {
+          "total": 7,
+          "cont_max": 5,
+          "cont_cur": 2
+        },
+        "community": {
+          "has_topic": 1,
+          "is_manager": 0,
+          "topic_count": 2,
+          "comment_count": 5,
+          "happy_count": 20,
+          "best_count": 1,
+          "appraise_count": 10,
+          "is_pinned": 1,
+          "pet_adv_time": -1
+        },
+        "guild": {"level": 1}
       },
       {
         "index": 1,

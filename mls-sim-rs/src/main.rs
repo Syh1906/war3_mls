@@ -52,9 +52,15 @@ fn main() {
             let mut players = config::build_players_from_config(&room_cfg.players);
             let archive_dir = config.read().unwrap().archive_dir.clone();
             storage::apply_saved_archives(&archive_dir, &room_cfg.script_dir, &mut players);
+            let simulation = config::build_room_simulation_from_config(Some(room_cfg), &players);
             let mut mgr = manager.write().unwrap();
-            let room_id =
-                mgr.create_room(script_dir.clone(), room_cfg.mode_id, players, archive_dir);
+            let room_id = mgr.create_room_with_simulation(
+                script_dir.clone(),
+                room_cfg.mode_id,
+                players,
+                simulation,
+                archive_dir,
+            );
             tracing::info!(
                 "Auto-created room {} with script_dir: {}",
                 room_id,

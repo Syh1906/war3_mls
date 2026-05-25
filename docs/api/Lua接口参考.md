@@ -104,6 +104,61 @@ MsGetTestPlayTime(player_index)     -- 返回测试大厅时间/秒 (int)
 MsGetPlayedCount(player_index)      -- 返回游玩次数 (int)
 ```
 
+玩家不存在时，查询类接口返回自然空值：字符串为空串，数字为 `0`。
+
+### 玩家平台信息
+
+```lua
+MsGetPlayerGuid(player_index)          -- 平台 UID (int64)
+MsGetPlayerPlatLevel(player_index)     -- 平台等级
+MsGetPlayerVipLevel(player_index)      -- 平台 VIP 等级
+MsGetPlayerMapVipLevel(player_index)   -- 地图 VIP 等级
+MsGetPlatVipType(player_index, type)   -- 指定平台 VIP 类型等级
+MsGetPlayerIsAuthor(player_index)      -- 1=当前地图作者，0=不是
+MsGetPlayerIsCollected(player_index)   -- 1=已收藏，0=未收藏
+MsGetPlayerIsBackflow(player_index)    -- 1=回流用户，0=不是
+```
+
+`MsGetPlatVipType` 常见类型：`4` 职业选手，`6` 开发者，`8` 新人主播，`9` 闪耀主播，`10` 社区管家。
+
+### 玩家行为、成就、任务和签到
+
+```lua
+MsGetPlayerDayRounds(player_index)
+MsGetPlayerSinceLastGame(player_index)
+MsGetPlayerLotteryCount(player_index, cfg_index)
+
+MsGetPlayerAchievePoint(player_index)
+MsGetPlayerAchieveDone(player_index, ach_id)
+
+MsGetPlayerTaskTotalProgress(player_index, task_id)
+MsGetPlayerTaskCurProgress(player_index, task_id)
+MsGetPlayerTaskDone(player_index, task_id)
+
+MsGetPlayerSignInTotal(player_index)
+MsGetPlayerSignInContMax(player_index)
+MsGetPlayerSignInContCur(player_index)
+```
+
+未配置指定宝箱时，`MsGetPlayerLotteryCount` 默认返回 `1`；未配置指定成就时，完成状态默认 `0`；未配置指定任务时默认 `total=10`、`current=3`、`done=0`。
+
+### 玩家社区和公会
+
+```lua
+MsGetPlayerHasTopic(player_index)
+MsGetPlayerIsManager(player_index)
+MsGetPlayerTopicCount(player_index)
+MsGetPlayerCommentCount(player_index)
+MsGetPlayerHappyCount(player_index)
+MsGetPlayerBestCount(player_index)
+MsGetPlayerAppraiseCount(player_index)
+MsGetPlayerIsPinned(player_index)
+MsGetPlayerPetAdvTime(player_index)
+MsGetPlayerGuildLevel(player_index)
+```
+
+`MsGetPlayerPetAdvTime` 返回 `-1` 表示本地默认模拟为“宠物未在探险中”。
+
 ---
 
 ## 房间查询
@@ -114,7 +169,29 @@ MsGetRoomLoadedTs()      -- 加载完成时间戳（秒）
 MsGetRoomGameTime()      -- 已过去的游戏时间（秒，从加载完成开始计时）
 MsGetRoomPlayerCount()   -- 当前在线玩家数（不含 NPC 和 AI）
 MsGetRoomModeId()        -- 游戏模式 ID
+MsGetMapVersion()        -- 当前地图版本号
+MsGetEnvType()           -- 环境类型：0 正式服，1 maptest，2 测试大厅，-1 本地测试
+MsGetPrebookCount()      -- 测试大厅预约人数
 ```
+
+---
+
+## 地图排行榜
+
+```lua
+MsGetPlayerRanking(player_index, ranking_num)
+MsGetPlayerRankValue(player_index, ranking_num)
+MsGetRankPlayerName(ranking_num, rank)
+MsGetRankValue(ranking_num, rank)
+```
+
+`ranking_num = -1` 表示等级榜，`0` 及以上表示地图作者自定义存档榜。`rank` 有效范围是 `1..100`，超出范围时玩家名返回空串，数值返回 `0`。
+
+本地模拟规则：
+
+- `rankings_loaded = false` 时，`MsGetPlayerRanking` 和 `MsGetPlayerRankValue` 返回 `-1`。
+- `rankings_loaded = true` 但玩家未上榜时，玩家排名和分值返回 `0`。
+- 未配置榜单时，默认从当前房间玩家生成 `-1` 和 `0` 两组样例榜单，并按分值降序排序。
 
 ---
 
@@ -157,6 +234,7 @@ local err = MsSaveScriptArchive(player_index, json.encode(save_data))
 
 ```lua
 local value = MsGetCommonArchive(player_index, "key")  -- 返回 string 或 nil
+local err = MsSetCommonArchive(player_index, "key", "value")
 ```
 
 ### 只读存档
@@ -201,6 +279,35 @@ local tbl = json.decode('{"key":"value"}')
 ```
 
 Rust 注入实现，自动提供 `json` 全局表，无需 `require`。`json.encode` 对 Lua 字符串按字节输出并只转义 JSON 必需字符，`json.decode` 使用标准 JSON 解析。
+
+---
+
+## 工具库
+
+```lua
+local hash = md5("abc")  -- 900150983cd24fb0d6963f7d28e17f72
+```
+
+`md5` 返回 32 位小写 MD5 字符串。
+
+---
+
+## 默认模拟数据
+
+未在 `config.json` 显式配置时，平台类、行为类、社区类和排行榜类 API 返回本地确定性模拟数据，不连接线上平台。
+
+| 范围 | 默认值 |
+| --- | --- |
+| 地图环境 | `map_version="local-dev"`、`env_type=-1`、`prebook_count=128` |
+| 玩家身份 | `guid=1000000000000 + player_index`、`plat_level=30` |
+| VIP | `vip_level=1`、`map_vip_level=1`、`player_index=0` 的 `vip_types[6]=1` |
+| 玩家标记 | `player_index=0` 的 `is_author=1`、`is_collected=1`、`is_backflow=0` |
+| 行为数据 | `day_rounds=3`、`since_last_game=3600`、未配置宝箱抽取次数为 `1` |
+| 成就和任务 | `achieve_point=120`、未配置成就完成状态为 `0`、未配置任务为 `10/3/0` |
+| 签到 | `total=7`、`cont_max=5`、`cont_cur=2` |
+| 社区和公会 | `has_topic=1`、`topic_count=2`、`comment_count=5`、`happy_count=20`、`guild_level=1` |
+
+这些值只用于本地调试，不代表线上真实平台数据。
 
 ---
 

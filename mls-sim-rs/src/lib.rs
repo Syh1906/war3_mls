@@ -3,4 +3,5 @@ pub mod config;
 pub mod gui;
 pub mod player;
 pub mod room;
+pub mod simulation;
 pub mod storage;

@@ -16,6 +16,7 @@ clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", features = ["serde"] }
+md5 = "0.7"
 
 [dev-dependencies]
 http-body-util = "0.1"
